@@ -1,0 +1,179 @@
+---
+title: "Peer-Reviewed Machine Learning"
+author: "Noel Figuera"
+date: "July 11, 2018"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Goal of the project
+
+The goal of the project is to predict the manner in which they did the exercise. This is the "classe" variable in the training set. You may use any of the other variables to predict with. You should create a report describing how you built your model, how you used cross validation, what you think the expected out of sample error is, and why you made the choices you did. You will also use your prediction model to predict 20 different test cases.
+
+```{r, eval = FALSE, echo = FALSE}
+
+library(caret)
+library(randomForest)
+library(rpart)
+library(rpart.plot)
+library(RColorBrewer)
+library(rattle)
+
+path <- 'C:\\Users\\noefi\\Desktop\\Personal\\Repository\\coursera-general\\data_science\\course 8\\data\\'
+
+file1 <- "pml-testing.csv"
+file2 <- "pml-training.csv"
+
+evaluation_s <- read.csv(paste(path,file1,sep=''), stringsAsFactors = FALSE)
+training_s <-  read.csv(paste(path,file2, sep=''), stringsAsFactors = FALSE)
+
+```
+## Preparing the data
+
+The first step is to prepare the data to be modelled:
+
+* Remove metadata columns
+* Remove columns with near zero variance
+* Remove columns with a high ratio of NA's
+
+
+```{r, eval = FALSE}
+
+#change the variable to factor
+training_s$classe <- as.factor(training_s$classe)
+
+# remove metadata
+training_s <- training_s[,-c(1:7)]
+evaluation_s <- evaluation_s[,-c(1:7)]
+
+# remove near zero variance
+nzv <- nearZeroVar(training_s, saveMetrics=TRUE)
+training_s <- training_s[,nzv$nzv==FALSE]
+
+# drop variables ith more than 70% NAs
+training_clean <- training_s
+for(i in 1:length(training_s)) {
+      if( sum( is.na( training_s[, i] ) ) /nrow(training_s) >= .7) {
+            for(j in 1:length(training_clean)) {
+                  if( length( grep(names(training_s[i]), names(training_clean)[j]) ) == 1)  {
+                        training_clean <- training_clean[ , -j]
+                  }   
+            } 
+      }
+}
+
+# select the columns
+training_s <- training_clean
+
+# set up the same columns in the evaluation
+columns <- colnames(training_s)
+columns2 <- colnames(training_s[,!(names(training_s) %in% c('classe'))])
+
+# prepare the evaluation set
+evaluation_s <- evaluation_s[,colnames]
+
+```
+
+## Cross-validation
+
+We separate the training set into a validation, test and training.
+
+
+```{r, eval = FALSE}
+
+# set the seed to get repetable results
+set.seed(2134)
+inBuild <- createDataPartition(y=training_s$classe, p=0.7, list=FALSE)
+# validation set to calculate final error
+validation <- training_s[-inBuild,]
+build <- training_s[inBuild,]
+inTrain <- createDataPartition(y=build$classe, p=0.7, list=FALSE)
+# training set
+training <- build[inTrain,]
+# testing set
+testing <- build[-inTrain,]
+dim(validation); dim(training); dim(test)
+
+```
+
+## First model: Basic tree
+
+The first model build uses a simple tree.
+
+```{r, eval = FALSE}
+
+train1 <- training
+
+####### build a basic tree model
+modfit1<- train(classe ~ ., data = train1, method ="rpart")
+print(modfit1)
+confusionMatrix(predict(modfit1, train1), train1$classe)
+
+```
+
+The model is not particularly accurate. 
+
+## Second model: Gradient Boosting Tree
+
+We build a second model using the gradient boosting algorithm.
+
+```{r, eval = FALSE}
+
+####### build a boosted tree model
+train2 <- training
+modfit2<- train(classe ~ ., data = train2, method ="gbm")
+print(modfit2)
+confusionMatrix(predict(modfit2, train2), train2$classe)
+
+```
+
+## Cross-validation
+
+We ran both models against the test data and the most accurate will be used against the validation data.
+
+```{r,eval = FALSE }
+
+# Test the models with the test data
+
+confusionMatrix(predict(modfit1,testing), testing$classe)
+confusionMatrix(predict(modfit2,testing), testing$classe)
+
+```
+
+ - Tree Accuracy = 0.471
+ - GBM Accuracy = 0.975
+ 
+ We select the GBM model and test it against validation data:
+ 
+```{r,eval = FALSE}
+
+# Test the model with the validation data
+
+confusionMatrix(predict(modfit2,validation), validation$classe)
+
+plot(modfit2) 
+
+```
+ 
+The final accuracy is 97.32% and the out of sample error is 2.6%
+ 
+## Prediction
+
+```{r, eval = FALSE }
+# run the prediction with the evaluation data
+pred1 <- predict(modfit3, evaluation_s)
+pred1
+
+```
+
+Results: 
+ B A B A A E D B A A B C B A E E A B B B
+
+# Conclusion
+
+We selected the boosted tree model as a better fit to the problem. Running the prediction against the auto evaluated test gave us a 100% prediction rate.
+
+The most complex part of the overall process was to prepare the data to be usable by the model, removing NA's and zero variance columns and making sure the evaluation data set shared the same columns as the training set.
